@@ -1,47 +1,63 @@
 from collections.abc import Sequence
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.middleware.cors import CORSMiddleware
 
 INVALID_TITLE_MESSAGE = "title must contain 1 to 100 characters after trimming"
 
 app = FastAPI(title="TODO API — CHG-TODO-002", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 _todos: list["Todo"] = []
+
+Title = Annotated[str, Field(min_length=1, max_length=100, pattern=r".*\S.*")]
+StoredTitle = Annotated[str, Field(min_length=1, max_length=100)]
 
 
 class TodoCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    title: str
+    title: Title
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
-    def trim_and_validate_title(cls, value: str) -> str:
-        title = value.strip()
-        if not 1 <= len(title) <= 100:
-            raise ValueError(INVALID_TITLE_MESSAGE)
-        return title
+    def trim_and_validate_title(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
 
 class Todo(BaseModel):
-    id: str
-    title: str
-    completed: bool = False
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(min_length=1)]
+    title: StoredTitle
+    completed: Literal[False]
 
 
 class ErrorResponse(BaseModel):
-    code: str = "INVALID_TITLE"
-    message: str = INVALID_TITLE_MESSAGE
+    model_config = ConfigDict(extra="forbid")
+
+    code: Literal["INVALID_TITLE"] = Field(
+        json_schema_extra={"enum": ["INVALID_TITLE"]}
+    )
+    message: Annotated[str, Field(min_length=1)]
 
 
 def invalid_title_response() -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=ErrorResponse().model_dump(),
+        content=ErrorResponse(
+            code="INVALID_TITLE", message=INVALID_TITLE_MESSAGE
+        ).model_dump(mode="json"),
     )
 
 
@@ -77,7 +93,7 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
     },
 )
 def create_todo(todo_create: TodoCreate) -> Todo:
-    todo = Todo(id=str(uuid4()), title=todo_create.title)
+    todo = Todo(id=str(uuid4()), title=todo_create.title, completed=False)
     _todos.append(todo)
     return todo
 

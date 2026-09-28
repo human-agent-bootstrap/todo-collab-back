@@ -57,7 +57,7 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          pattern: '.*\\S.*'
+          pattern: '.*\S.*'
           description: The server trims surrounding whitespace before checking the 1–100 character constraint.
     Todo:
       type: object
