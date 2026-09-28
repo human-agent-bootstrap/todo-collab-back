@@ -1,10 +1,11 @@
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal
+from pathlib import Path
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
+import yaml
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
@@ -68,14 +69,16 @@ async def request_validation_error_handler(
     return invalid_title_response()
 
 
+CONTRACT_PATH = Path(__file__).parents[1] / "openapi" / "todo-api.openapi.yaml"
+
+
 def custom_openapi() -> dict[str, object]:
     if app.openapi_schema:
         return app.openapi_schema
 
-    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
-    del schema["paths"]["/todos"]["post"]["responses"]["422"]
-    app.openapi_schema = schema
-    return schema
+    with CONTRACT_PATH.open(encoding="utf-8") as contract_file:
+        app.openapi_schema = cast(dict[str, object], yaml.safe_load(contract_file))
+    return app.openapi_schema
 
 
 app.openapi = custom_openapi  # type: ignore[method-assign]

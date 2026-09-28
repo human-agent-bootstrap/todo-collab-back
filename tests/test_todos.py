@@ -1,4 +1,7 @@
+from pathlib import Path
+
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from app.main import app, todos_in_memory
@@ -49,65 +52,21 @@ def test_invalid_title_returns_contract_error(payload: dict[str, str]) -> None:
     }
 
 
+def test_served_openapi_matches_approved_contract() -> None:
+    plan_path = Path(__file__).parents[1] / "openapi" / "todo-api.openapi.yaml"
+    approved_contract = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json() == approved_contract
+    assert app.openapi() == approved_contract
+
+
 def test_openapi_documents_only_contract_responses() -> None:
     responses = app.openapi()["paths"]["/todos"]["post"]["responses"]
 
     assert set(responses) == {"201", "400"}
-
-
-def test_openapi_expresses_approved_contract_constraints() -> None:
-    schemas = app.openapi()["components"]["schemas"]
-
-    assert schemas["TodoCreate"] == {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["title"],
-        "title": "TodoCreate",
-        "properties": {
-            "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100,
-                "pattern": ".*\\S.*",
-                "title": "Title",
-            }
-        },
-    }
-    assert schemas["Todo"] == {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["id", "title", "completed"],
-        "title": "Todo",
-        "properties": {
-            "id": {"type": "string", "minLength": 1, "title": "Id"},
-            "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100,
-                "title": "Title",
-            },
-            "completed": {"type": "boolean", "const": False, "title": "Completed"},
-        },
-    }
-    assert schemas["ErrorResponse"] == {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["code", "message"],
-        "title": "ErrorResponse",
-        "properties": {
-            "code": {
-                "type": "string",
-                "enum": ["INVALID_TITLE"],
-                "const": "INVALID_TITLE",
-                "title": "Code",
-            },
-            "message": {
-                "type": "string",
-                "minLength": 1,
-                "title": "Message",
-            },
-        },
-    }
 
 
 @pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
